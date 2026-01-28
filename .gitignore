@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Env / secrets
+.env
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (no subir datos crudos)
+data/raw/
+data/private/
