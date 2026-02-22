@@ -20,4 +20,4 @@ Thumbs.db
 
 # Data (no subir datos crudos)
 data/raw/
-data/private/
+data/private/.virtual_documents/
