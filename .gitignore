@@ -21,3 +21,6 @@ Thumbs.db
 # Data (no subir datos crudos)
 data/raw/
 data/private/.virtual_documents/
+data/raw/
+data/processed/
+data/errors/
