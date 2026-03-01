@@ -24,3 +24,27 @@ data/private/.virtual_documents/
 data/raw/
 data/processed/
 data/errors/
+# --- Jupyter ---
+.ipynb_checkpoints/
+.virtual_documents/
+
+# --- Data (NO versionar) ---
+data/raw/
+data/processed/
+data/errors/
+
+# (opcional) por si algún día guardas datasets fuera de esas carpetas
+*.parquet
+*.csv
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+
+# --- Entornos / OS ---
+.venv/
+venv/
+.env
+.DS_Store
+Thumbs.db
