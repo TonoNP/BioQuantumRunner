@@ -48,6 +48,8 @@ def main():
     rows = []
     for s in sessions:
         rows.append({
+            "date": getattr(s, "date", None),
+            "start_time": getattr(s, "start_time", None),
             "name": s.name,
             "distance_km": s.distance_km,
             "duration_s": s.duration_s,

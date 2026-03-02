@@ -34,6 +34,9 @@ class TrainingSession:
     avg_hr: Optional[int] = None
     name: str = "session"
 
+    start_time: Optional[str] = None   # ← NUEVA LÍNEA
+    date: Optional[str] = None         # ← NUEVA LÍNEA
+
     def __post_init__(self) -> None:
         if self.distance_km <= 0:
             raise ValueError("distance_km must be > 0")
@@ -61,3 +64,5 @@ class TrainingSession:
             f"pace={self.pace_str}"
             f"{hr_part})"
         )
+start_time: str | None = None
+date: str | None = None
