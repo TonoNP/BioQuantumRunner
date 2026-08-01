@@ -2,7 +2,8 @@
 from pathlib import Path
 import pandas as pd
 
-IN_CSV = Path("data/processed/sessions.csv")
+from d2_input import EFFICIENCY_PACE_HR, load_sessions
+
 OUT_DIR = Path("data/processed")
 MIN_KM = 16.0
 
@@ -15,10 +16,7 @@ def pace_str_from_seconds(sec_per_km: float) -> str:
     return f"{m}:{s:02d} /km"
 
 def main():
-    if not IN_CSV.exists():
-        raise FileNotFoundError(f"No existe: {IN_CSV.resolve()}")
-
-    df = pd.read_csv(IN_CSV)
+    df = load_sessions()
 
     # Asegura columnas esperadas
     required = {"distance_km", "duration_s", "pace_sec_per_km", "avg_hr"}
@@ -33,7 +31,7 @@ def main():
     long_df = long_df.dropna(subset=["avg_hr", "pace_sec_per_km"])
 
     # Eficiencia simple
-    long_df["eff"] = long_df["pace_sec_per_km"] / long_df["avg_hr"]
+    long_df["eff"] = long_df[EFFICIENCY_PACE_HR]
 
     # --- filtro anti-basura ---
     long_df = long_df[

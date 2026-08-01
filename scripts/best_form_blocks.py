@@ -2,12 +2,13 @@
 from pathlib import Path
 import pandas as pd
 
-IN_CSV = Path("data/processed/sessions.csv")
+from d2_input import EFFICIENCY_PACE_HR, load_sessions
+
 WINDOW_DAYS = 28
 MIN_KM = 10.0
 
 def main():
-    df = pd.read_csv(IN_CSV)
+    df = load_sessions()
 
     # Parse fechas
     if "date" not in df.columns:
@@ -18,7 +19,7 @@ def main():
 
     # Eficiencia simple
     df = df.dropna(subset=["pace_sec_per_km", "avg_hr", "distance_km", "duration_s", "date"])
-    df["eff"] = df["pace_sec_per_km"] / df["avg_hr"]
+    df["eff"] = df[EFFICIENCY_PACE_HR]
 
     # Filtros fisiológicos (como en largas)
     df = df[

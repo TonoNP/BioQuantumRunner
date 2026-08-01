@@ -4,7 +4,8 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-SESSIONS = Path("data/processed/sessions.csv")
+from d2_input import load_sessions
+
 BLOCKS = Path("data/processed/training_blocks_6w.csv")
 
 def pace_str(sec):
@@ -24,7 +25,7 @@ def time_str(seconds):
 
 def main():
 
-    df=pd.read_csv(SESSIONS)
+    df=load_sessions()
     blocks=pd.read_csv(BLOCKS)
 
     df["date"]=pd.to_datetime(df["date"],errors="coerce")

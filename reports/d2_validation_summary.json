@@ -1,0 +1,54 @@
+{
+  "effects": {
+    "canonical_precision_full_period": {
+      "best_form_10km": 597,
+      "hr_pace_intercept": 195.91735013623855,
+      "hr_pace_model": 572,
+      "hr_pace_slope": -0.15230964655153945,
+      "long_runs_16km": 137,
+      "weekly_analysis": 1077
+    },
+    "historical_canonical_precision": {
+      "best_form_10km": 570,
+      "hr_pace_intercept": 199.78699487837133,
+      "hr_pace_model": 549,
+      "hr_pace_slope": -0.16662003401285388,
+      "long_runs_16km": 128,
+      "weekly_analysis": 1023
+    },
+    "historical_legacy_precision": {
+      "best_form_10km": 571,
+      "hr_pace_intercept": 199.87645861821352,
+      "hr_pace_model": 550,
+      "hr_pace_slope": -0.16697724029240274,
+      "long_runs_16km": 128,
+      "weekly_analysis": 1025
+    }
+  },
+  "historical_cutoff": "2025-10-19T23:59:59.999999",
+  "migration_compatibility": {
+    "actual": {
+      "best_form_10km": 571,
+      "hr_pace_model": 550,
+      "long_runs_16km": 128,
+      "weekly_analysis": 1025
+    },
+    "expected": {
+      "best_form_10km": 571,
+      "hr_pace_model": 550,
+      "long_runs_16km": 128,
+      "weekly_analysis": 1025
+    },
+    "passed": true
+  },
+  "session_counts": {
+    "canonical_full_period": 2842,
+    "historical_full_precision": 2703,
+    "historical_validation": 2703
+  },
+  "source": {
+    "path": "data/processed/sessions_master.parquet",
+    "sha256": "b9fdebbe8fd7a36e6673a4569828c6c4c36862d6aaa93ff3cad0a1ebe37ab27e"
+  },
+  "validation_contract": "D2-IMP-001"
+}

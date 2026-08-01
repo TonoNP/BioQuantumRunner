@@ -2,7 +2,8 @@
 from pathlib import Path
 import pandas as pd
 
-SESSIONS_CSV = Path("data/processed/sessions.csv")
+from d2_input import load_sessions
+
 OPTIMAL_CSV = Path("data/processed/training_blocks_6w.csv")
 
 WINDOW_DAYS = 28
@@ -14,7 +15,7 @@ def pace_str(sec):
     return f"{m}:{s:02d}/km"
 
 def main():
-    df = pd.read_csv(SESSIONS_CSV)
+    df = load_sessions()
     opt = pd.read_csv(OPTIMAL_CSV)
 
     df["date"] = pd.to_datetime(df["date"], errors="coerce")

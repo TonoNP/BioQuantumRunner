@@ -1,9 +1,9 @@
 # scripts/pace_hr_model.py
-from pathlib import Path
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
-IN_CSV = Path("data/processed/sessions.csv")
+from d2_input import load_sessions
 
 def pace_str(sec):
     sec = int(round(sec))
@@ -12,7 +12,7 @@ def pace_str(sec):
     return f"{m}:{s:02d}/km"
 
 def main():
-    df = pd.read_csv(IN_CSV)
+    df = load_sessions()
 
     # Parse fechas (por si luego queremos filtrar por periodos)
     if "date" in df.columns:

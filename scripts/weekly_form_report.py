@@ -3,7 +3,8 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-IN_CSV = Path("data/processed/sessions.csv")
+from d2_input import load_sessions
+
 OUT_CSV = Path("data/processed/weekly_form_report.csv")
 
 def classify_delta(delta):
@@ -23,7 +24,7 @@ def classify_week(row):
         return "normal"
 
 def main():
-    df = pd.read_csv(IN_CSV)
+    df = load_sessions()
 
     # Fechas
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
