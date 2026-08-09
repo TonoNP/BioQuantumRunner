@@ -1,0 +1,163 @@
+[
+  {
+    "model_id": "baseline_last_race_v1",
+    "model_version": "1.0",
+    "feature_contract": "prior verified races",
+    "training_window": "all prior races",
+    "hyperparameters": {
+      "minimum_same_class_races": 1
+    },
+    "eligibility_rules": "one prior race of same class",
+    "exclusion_rules": "registry exclusions",
+    "evaluation_protocol": "walk_forward_pre_race_v1",
+    "code_version": "6f794a87563d8042a3268ef279bdec326cd23f21",
+    "data_manifest": "1f8f9f29011abcdda7de17b9f0636171aae2d9d53372d793102a3c3b1a340ebb"
+  },
+  {
+    "model_id": "baseline_class_median_v1",
+    "model_version": "1.0",
+    "feature_contract": "prior verified races",
+    "training_window": "all prior races",
+    "hyperparameters": {
+      "minimum_same_class_races": 2
+    },
+    "eligibility_rules": "two prior races of same class",
+    "exclusion_rules": "registry exclusions",
+    "evaluation_protocol": "walk_forward_pre_race_v1",
+    "code_version": "6f794a87563d8042a3268ef279bdec326cd23f21",
+    "data_manifest": "1f8f9f29011abcdda7de17b9f0636171aae2d9d53372d793102a3c3b1a340ebb"
+  },
+  {
+    "model_id": "baseline_recent_pace_v1",
+    "model_version": "1.0",
+    "feature_contract": "D2 pace",
+    "training_window": "last 20 prior eligible sessions",
+    "hyperparameters": {
+      "minimum_sessions": 5,
+      "window_sessions": 20
+    },
+    "eligibility_rules": "five valid prior sessions",
+    "exclusion_rules": "none",
+    "evaluation_protocol": "walk_forward_pre_race_v1",
+    "code_version": "6f794a87563d8042a3268ef279bdec326cd23f21",
+    "data_manifest": "1f8f9f29011abcdda7de17b9f0636171aae2d9d53372d793102a3c3b1a340ebb"
+  },
+  {
+    "model_id": "baseline_distance_scaling_v1",
+    "model_version": "1.0",
+    "feature_contract": "prior verified race time",
+    "training_window": "latest prior verified race",
+    "hyperparameters": {
+      "exponent": 1.06,
+      "constant_source": "Riegel baseline"
+    },
+    "eligibility_rules": "one prior verified race",
+    "exclusion_rules": "registry exclusions",
+    "evaluation_protocol": "walk_forward_pre_race_v1",
+    "code_version": "6f794a87563d8042a3268ef279bdec326cd23f21",
+    "data_manifest": "1f8f9f29011abcdda7de17b9f0636171aae2d9d53372d793102a3c3b1a340ebb"
+  },
+  {
+    "model_id": "pace_hr_linear_v1",
+    "model_version": "1.0",
+    "feature_contract": "D2 avg_hr",
+    "training_window": "all prior eligible sessions",
+    "hyperparameters": {
+      "minimum_sessions": 30
+    },
+    "eligibility_rules": "30 sessions with avg_hr",
+    "exclusion_rules": "none",
+    "evaluation_protocol": "walk_forward_pre_race_v1",
+    "code_version": "6f794a87563d8042a3268ef279bdec326cd23f21",
+    "data_manifest": "1f8f9f29011abcdda7de17b9f0636171aae2d9d53372d793102a3c3b1a340ebb"
+  },
+  {
+    "model_id": "efficiency_pace_hr_linear_v1",
+    "model_version": "1.0",
+    "feature_contract": "D2 efficiency_pace_hr_v1",
+    "training_window": "all prior eligible sessions",
+    "hyperparameters": {
+      "minimum_sessions": 30
+    },
+    "eligibility_rules": "30 sessions with efficiency_pace_hr_v1",
+    "exclusion_rules": "none",
+    "evaluation_protocol": "walk_forward_pre_race_v1",
+    "code_version": "6f794a87563d8042a3268ef279bdec326cd23f21",
+    "data_manifest": "1f8f9f29011abcdda7de17b9f0636171aae2d9d53372d793102a3c3b1a340ebb"
+  },
+  {
+    "model_id": "efficiency_speed_hr_linear_v2",
+    "model_version": "1.0",
+    "feature_contract": "D2 efficiency_speed_hr_v2",
+    "training_window": "all prior eligible sessions",
+    "hyperparameters": {
+      "minimum_sessions": 30
+    },
+    "eligibility_rules": "30 sessions with efficiency_speed_hr_v2",
+    "exclusion_rules": "none",
+    "evaluation_protocol": "walk_forward_pre_race_v1",
+    "code_version": "6f794a87563d8042a3268ef279bdec326cd23f21",
+    "data_manifest": "1f8f9f29011abcdda7de17b9f0636171aae2d9d53372d793102a3c3b1a340ebb"
+  },
+  {
+    "model_id": "distance_profile_regression_v1",
+    "model_version": "1.0",
+    "feature_contract": "log distance and D2 pace",
+    "training_window": "all prior eligible sessions",
+    "hyperparameters": {
+      "minimum_sessions": 30
+    },
+    "eligibility_rules": "30 valid prior sessions",
+    "exclusion_rules": "none",
+    "evaluation_protocol": "walk_forward_pre_race_v1",
+    "code_version": "6f794a87563d8042a3268ef279bdec326cd23f21",
+    "data_manifest": "1f8f9f29011abcdda7de17b9f0636171aae2d9d53372d793102a3c3b1a340ebb"
+  },
+  {
+    "model_id": "recent_vs_peak_blend_v1",
+    "model_version": "1.0",
+    "feature_contract": "D2 efficiency_speed_hr_v2",
+    "training_window": "all prior plus last 20",
+    "hyperparameters": {
+      "base_weight": 0.7,
+      "recent_weight": 0.3,
+      "recent_sessions": 20,
+      "minimum_sessions": 30
+    },
+    "eligibility_rules": "30 valid prior sessions",
+    "exclusion_rules": "none",
+    "evaluation_protocol": "walk_forward_pre_race_v1",
+    "code_version": "6f794a87563d8042a3268ef279bdec326cd23f21",
+    "data_manifest": "1f8f9f29011abcdda7de17b9f0636171aae2d9d53372d793102a3c3b1a340ebb"
+  },
+  {
+    "model_id": "race_specific_history_v1",
+    "model_version": "1.0",
+    "feature_contract": "log nominal distance and race time",
+    "training_window": "all prior verified races",
+    "hyperparameters": {
+      "minimum_races": 4,
+      "minimum_distinct_distances": 2
+    },
+    "eligibility_rules": "four races over two distances",
+    "exclusion_rules": "registry exclusions",
+    "evaluation_protocol": "walk_forward_pre_race_v1",
+    "code_version": "6f794a87563d8042a3268ef279bdec326cd23f21",
+    "data_manifest": "1f8f9f29011abcdda7de17b9f0636171aae2d9d53372d793102a3c3b1a340ebb"
+  },
+  {
+    "model_id": "baseline_distance_scaling_personalized_v1",
+    "model_version": "1.0",
+    "feature_contract": "prior verified race times",
+    "training_window": "all prior races",
+    "hyperparameters": {
+      "minimum_races": 3,
+      "minimum_distinct_distances": 2
+    },
+    "eligibility_rules": "three races and two distances",
+    "exclusion_rules": "registry exclusions",
+    "evaluation_protocol": "walk_forward_pre_race_v1",
+    "code_version": "6f794a87563d8042a3268ef279bdec326cd23f21",
+    "data_manifest": "1f8f9f29011abcdda7de17b9f0636171aae2d9d53372d793102a3c3b1a340ebb"
+  }
+]

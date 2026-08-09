@@ -1,0 +1,14 @@
+{
+  "captured_at": "2026-08-03T00:00:00-06:00",
+  "git_head": "6f794a87563d8042a3268ef279bdec326cd23f21",
+  "sha256": {
+    "app.py": "e93818db0f75c81da69f1fce0f5d7c21c03f9b5746262cb8ea346374234c2ea8",
+    "notebooks/race_predictor_v2.ipynb": "22f9f6a6c2dbcba8ce7394dea34c22b0cb1c42f473dda1ffdc33a3f6bb0fc60e",
+    "data/processed/sessions_master.csv": "cb7b4cc4d72a32d409e77296318ac4e57b152d696e262eacfea756b104a50e4f",
+    "data/processed/sessions_master.parquet": "b9fdebbe8fd7a36e6673a4569828c6c4c36862d6aaa93ff3cad0a1ebe37ab27e",
+    "data/processed/ingestion_summary.json": "aa42f34c242870310d5124117f7670978f9dd022e4884d9aaa2347e3697f0e0e",
+    "data/errors/ingestion_errors.csv": "9aa33aace2339f8213e54fdb73e0b4e198a17ad4ae3b452253b7c41292890292",
+    "data/errors/ingestion_errors.parquet": "739f01a8c189204fcfecc6b1162593fdf6f9fb9bef5207ca5ef599714b369111",
+    "reports/d2_validation_summary.json": "e0b4093bc110cf077ff24e7794aa165ac45e20fdcf7aed2f4f354a168d47ccd4"
+  }
+}

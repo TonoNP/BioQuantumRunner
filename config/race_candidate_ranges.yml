@@ -1,0 +1,12 @@
+{
+  "version": "d3-1.0",
+  "purpose": "candidate_detection_only",
+  "ranges_km": {
+    "3K": [2.7, 3.4],
+    "5K": [4.5, 5.7],
+    "10K": [9.0, 11.5],
+    "Half Marathon": [19.0, 23.5],
+    "Marathon": [38.0, 46.0]
+  },
+  "normative_rule": "A range match never establishes event_type=race or verification."
+}
