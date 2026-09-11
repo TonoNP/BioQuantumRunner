@@ -1,0 +1,22 @@
+{
+  "gold_core_logical_hash": "f0e90ad1fe62902a079cff79b24d1adb08d7d3d2c65bc10e9824c424ed5cea66",
+  "gold_extended_logical_hash": "93297965f23f1d7efc7edf41a07884574b4b75901c3c547d7cf0b8fc232526bf",
+  "population_manifest": "8959a8a778bdc7f00f990870c72c7f8f96dab6d027111b0caa17d479a1ab1048",
+  "real_session_count": 0,
+  "review_unit_count": 2,
+  "schema_manifest": "c5f9de048741737259ca44ebbd37d86c46f39d229bc101782c1b8f8f71ac007e",
+  "selected_real_review_units": 0,
+  "synthetic_only": true,
+  "synthetic_session_count": 3,
+  "table_logical_hashes": {
+    "ground_truth_annotation_threads": "560f48ffc4774fadf3894b983ed7ca0aa78a5932a92789d9e2a3fa9e6b696c33",
+    "ground_truth_group_memberships": "db63ed9c6ca7d0acf9b9ce283820cdebe77654e3dc29e39efffd6619766a587e",
+    "ground_truth_publications": "d4126b908a50cb498b2c4a6db8dc3eadd8a090598733ed2348fb26b510bd9ca9",
+    "ground_truth_review_unit_memberships": "7a22e50d2e8bbd5e798605d09e779d83fe3f447ebd6f36513cc4430c4c0a1b77",
+    "ground_truth_review_units": "06d320e2d2a16ae877001c52c8103720e348cc33174d8d9c7b200917ed7ec626",
+    "ground_truth_sampling_batches": "b0d4ed8134af9d015e3b4b201a6356ba2ff690edd4b0b9f3b8ec54bf46de82d2",
+    "ground_truth_session_decisions": "ed217cf8973b0f9dd0ad338cd77bf496e8b6c592a7c745a7d9416a49cf08ac8d",
+    "ground_truth_source_sessions": "3d7b9d2c886cc861db3d029a1817ff8fb7515700096318ffec806197e70b2e6c",
+    "ground_truth_workout_groups": "2e2c8b7e18f74c0fa38307bf05ca6a721b73e6d226f62e153ba1a72cacc55627"
+  }
+}

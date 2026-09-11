@@ -1,0 +1,15 @@
+{
+  "config/session_classification.yml": "5bb6e61238755314f88baa979d00dd007ac903bf236f672fbb51a9d958d6b04a",
+  "reports/d4_frozen_inputs.json": "122859e348f0fec2ec1e789422508391f6568573cf4f5d9c16b8b8f3b7a25222",
+  "reports/d4_polar_signal_coverage.json": "8a0bb3ba248a6c9da2e751275bc8e837bda7c8b17ed49f7fc42dd9dcf0b40ee5",
+  "reports/d4_validation_summary.json": "c880bcc147d40f5e971c0d7183e5adea0c037d814a97f32eddb23dd29d184812",
+  "scripts/build_d4.py": "9ce364d142981195373de3474aee5500494c26df3f2ea252cd12da55cec4d563",
+  "src/session_classification/__init__.py": "cac838ad4447163e1c006269749205e13065ab57588fdd8169ca473da4f3d57c",
+  "src/session_classification/classifier.py": "13834f07e06bc726d0d23c920169a68eeb2481c9fb85faa3150b6d05f04f273d",
+  "src/session_classification/contracts.py": "c5dc7e421f631bc0892339603e39f4c2d65f7d24e754b562d84e6aa415a372b6",
+  "src/session_classification/features.py": "e4ba642dfe00e70bec4ba4585b9f2ce77959c53ef3a8383cb5c7db41183758ff",
+  "src/session_classification/ground_truth.py": "4aeab8494ff8c89e60b8cec73b1e505ff096d6749270d5feca53d8414fc6d7b8",
+  "src/session_classification/polar_sidecar.py": "d7107648eeaf6b2e537c3b84e2eb7480df64069d1eabbe062609624d29ff5758",
+  "src/session_classification/temporal.py": "b567e458bbe98caca00311d8135b7d47228a1b4bf781497d4cfbb21c0e32f4bd",
+  "tests/test_d4_session_classification.py": "6c95364c972fb45ab722e0ff69595c0e8abce6e1cf6a564bd6ce4c39f44019e5"
+}
