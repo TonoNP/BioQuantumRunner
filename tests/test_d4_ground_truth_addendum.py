@@ -97,7 +97,10 @@ def test_schema_contains_all_contract_and_technical_tables(store):
         "ground_truth_publications", "ground_truth_review_unit_memberships",
         "ground_truth_review_units", "ground_truth_sampling_batches",
         "ground_truth_session_decisions", "ground_truth_source_sessions",
-        "ground_truth_workout_groups",
+        "ground_truth_workout_groups", "ground_truth_claim_threads_v2",
+        "ground_truth_evidence_type_catalog_v2", "ground_truth_evidence_records_v2",
+        "ground_truth_semantic_claims_v2", "ground_truth_claim_evidence_links_v2",
+        "ground_truth_workout_memberships_v2", "ground_truth_membership_evidence_links_v2",
     }
 
 

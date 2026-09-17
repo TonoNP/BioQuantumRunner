@@ -17,13 +17,20 @@ from typing import Any, Iterable, Iterator, Mapping, Sequence
 from .canonical import logical_hash, logical_records_hash
 from .contracts import (
     ADDENDUM_VERSION,
+    CLAIM_KINDS,
     EVIDENCE_CATALOG_VERSION,
+    EVIDENCE_LEVELS,
+    MEMBERSHIP_STATES,
     PROHIBITED_LOCKED_TEST_PURPOSES,
+    REFINEMENT_EVIDENCE_CATALOG_VERSION,
+    REFINEMENT_SCHEMA_VERSION,
+    REFINEMENT_VERSION,
     SCHEMA_VERSION,
     TEMPORAL_SPLIT_VERSION,
     temporal_partition,
 )
 from .ids import ID_STRATEGY_VERSION, deterministic_id, new_event_id, validate_uuid
+from .refinement import compose_dimension_gold, validate_claim
 
 
 class LockedTestAccessError(ValueError):
@@ -45,6 +52,13 @@ IMMUTABLE_TABLES = (
     "ground_truth_session_decisions",
     "ground_truth_workout_groups",
     "ground_truth_group_memberships",
+    "ground_truth_claim_threads_v2",
+    "ground_truth_evidence_type_catalog_v2",
+    "ground_truth_evidence_records_v2",
+    "ground_truth_semantic_claims_v2",
+    "ground_truth_claim_evidence_links_v2",
+    "ground_truth_workout_memberships_v2",
+    "ground_truth_membership_evidence_links_v2",
     "ground_truth_publications",
 )
 
@@ -226,6 +240,131 @@ CREATE TABLE IF NOT EXISTS ground_truth_group_memberships (
     CHECK(label_available_at >= decision_timestamp)
 );
 
+CREATE TABLE IF NOT EXISTS ground_truth_claim_threads_v2 (
+    annotation_thread_id TEXT PRIMARY KEY,
+    runner_id TEXT NOT NULL,
+    subject_kind TEXT NOT NULL CHECK(subject_kind IN ('recorded_session','workout_group','workout_membership')),
+    subject_key TEXT NOT NULL,
+    opened_by TEXT NOT NULL,
+    opened_at TEXT NOT NULL,
+    contract_version TEXT NOT NULL,
+    UNIQUE(runner_id, subject_kind, subject_key, annotation_thread_id)
+);
+
+CREATE TABLE IF NOT EXISTS ground_truth_evidence_type_catalog_v2 (
+    catalog_version TEXT NOT NULL,
+    evidence_type_id TEXT NOT NULL,
+    definition TEXT NOT NULL,
+    source_class TEXT NOT NULL CHECK(source_class IN ('instrumental','human','manufacturer','analytical','external')),
+    lifecycle_status TEXT NOT NULL CHECK(lifecycle_status IN ('active','deprecated')),
+    superseded_by_type_id TEXT,
+    PRIMARY KEY (catalog_version, evidence_type_id)
+);
+
+CREATE TABLE IF NOT EXISTS ground_truth_evidence_records_v2 (
+    evidence_id TEXT PRIMARY KEY,
+    runner_id TEXT NOT NULL,
+    evidence_type_id TEXT NOT NULL,
+    evidence_catalog_version TEXT NOT NULL,
+    source_system TEXT NOT NULL,
+    source_locator TEXT NOT NULL,
+    source_content_sha256 TEXT CHECK(source_content_sha256 IS NULL OR length(source_content_sha256) = 64),
+    evidence_observed_at TEXT,
+    recorded_at TEXT NOT NULL,
+    scientific_purpose TEXT NOT NULL,
+    data_minimization_note TEXT NOT NULL,
+    code_commit TEXT NOT NULL,
+    contract_version TEXT NOT NULL,
+    FOREIGN KEY (evidence_catalog_version, evidence_type_id)
+      REFERENCES ground_truth_evidence_type_catalog_v2(catalog_version, evidence_type_id)
+);
+
+CREATE TABLE IF NOT EXISTS ground_truth_semantic_claims_v2 (
+    claim_id TEXT PRIMARY KEY,
+    annotation_thread_id TEXT NOT NULL REFERENCES ground_truth_claim_threads_v2(annotation_thread_id),
+    revision INTEGER NOT NULL CHECK(revision >= 1),
+    supersedes_claim_id TEXT REFERENCES ground_truth_semantic_claims_v2(claim_id),
+    decision_kind TEXT NOT NULL CHECK(decision_kind IN ('annotation','correction','adjudication','consensus','migration')),
+    runner_id TEXT NOT NULL,
+    subject_kind TEXT NOT NULL CHECK(subject_kind IN ('recorded_session','workout_group','workout_membership')),
+    subject_key TEXT NOT NULL,
+    source_file TEXT,
+    source_sha256 TEXT CHECK(source_sha256 IS NULL OR length(source_sha256) = 64),
+    dimension_name TEXT NOT NULL,
+    claim_value TEXT,
+    claim_status TEXT NOT NULL CHECK(claim_status IN ('asserted','unknown','uncertain','abstained','not_applicable')),
+    claim_kind TEXT NOT NULL CHECK(claim_kind IN ('instrumental_observation','human_report','manufacturer_interpretation','analytical_inference','legacy_unclassified')),
+    evidence_level TEXT NOT NULL CHECK(evidence_level IN ('verified','reported','suspected')),
+    author_id TEXT NOT NULL,
+    author_role TEXT NOT NULL,
+    rationale TEXT,
+    uncertainty_reason TEXT,
+    evidence_observed_at TEXT,
+    decision_timestamp TEXT NOT NULL,
+    effective_from TEXT NOT NULL,
+    label_available_at TEXT NOT NULL,
+    provenance_granularity TEXT NOT NULL CHECK(provenance_granularity IN ('atomic','legacy_decision_wide')),
+    legacy_decision_id TEXT,
+    code_commit TEXT NOT NULL,
+    contract_version TEXT NOT NULL,
+    UNIQUE(annotation_thread_id, revision),
+    CHECK(label_available_at >= decision_timestamp),
+    CHECK((subject_kind = 'recorded_session' AND source_file IS NOT NULL AND source_sha256 IS NOT NULL)
+       OR (subject_kind <> 'recorded_session')),
+    FOREIGN KEY (runner_id, source_file, source_sha256)
+      REFERENCES ground_truth_source_sessions(runner_id, source_file, source_sha256)
+);
+
+CREATE TABLE IF NOT EXISTS ground_truth_claim_evidence_links_v2 (
+    claim_evidence_link_id TEXT PRIMARY KEY,
+    claim_id TEXT NOT NULL REFERENCES ground_truth_semantic_claims_v2(claim_id),
+    evidence_id TEXT NOT NULL REFERENCES ground_truth_evidence_records_v2(evidence_id),
+    support_role TEXT NOT NULL CHECK(support_role IN ('support','contradict','contextual','provenance_only')),
+    rationale TEXT,
+    UNIQUE(claim_id, evidence_id, support_role)
+);
+
+CREATE TABLE IF NOT EXISTS ground_truth_workout_memberships_v2 (
+    membership_decision_id TEXT PRIMARY KEY,
+    annotation_thread_id TEXT NOT NULL REFERENCES ground_truth_claim_threads_v2(annotation_thread_id),
+    revision INTEGER NOT NULL CHECK(revision >= 1),
+    supersedes_membership_decision_id TEXT REFERENCES ground_truth_workout_memberships_v2(membership_decision_id),
+    decision_kind TEXT NOT NULL CHECK(decision_kind IN ('annotation','correction','adjudication','consensus','migration')),
+    runner_id TEXT NOT NULL,
+    workout_group_id TEXT NOT NULL,
+    group_decision_id TEXT NOT NULL REFERENCES ground_truth_workout_groups(group_decision_id),
+    source_file TEXT NOT NULL,
+    source_sha256 TEXT NOT NULL,
+    membership_state TEXT NOT NULL CHECK(membership_state IN ('included','excluded','uncertain','unknown','abstained')),
+    component_order INTEGER CHECK(component_order IS NULL OR component_order >= 1),
+    component_role TEXT CHECK(component_role IN ('warmup','main_set','recovery_segment','cooldown','unknown')),
+    claim_kind TEXT NOT NULL CHECK(claim_kind IN ('instrumental_observation','human_report','manufacturer_interpretation','analytical_inference','legacy_unclassified')),
+    evidence_level TEXT NOT NULL CHECK(evidence_level IN ('verified','reported','suspected')),
+    author_id TEXT NOT NULL,
+    author_role TEXT NOT NULL,
+    rationale TEXT,
+    uncertainty_reason TEXT,
+    evidence_observed_at TEXT,
+    decision_timestamp TEXT NOT NULL,
+    effective_from TEXT NOT NULL,
+    label_available_at TEXT NOT NULL,
+    code_commit TEXT NOT NULL,
+    contract_version TEXT NOT NULL,
+    UNIQUE(annotation_thread_id, revision),
+    CHECK(label_available_at >= decision_timestamp),
+    FOREIGN KEY (runner_id, source_file, source_sha256)
+      REFERENCES ground_truth_source_sessions(runner_id, source_file, source_sha256)
+);
+
+CREATE TABLE IF NOT EXISTS ground_truth_membership_evidence_links_v2 (
+    membership_evidence_link_id TEXT PRIMARY KEY,
+    membership_decision_id TEXT NOT NULL REFERENCES ground_truth_workout_memberships_v2(membership_decision_id),
+    evidence_id TEXT NOT NULL REFERENCES ground_truth_evidence_records_v2(evidence_id),
+    support_role TEXT NOT NULL CHECK(support_role IN ('support','contradict','contextual','provenance_only')),
+    rationale TEXT,
+    UNIQUE(membership_decision_id, evidence_id, support_role)
+);
+
 CREATE TABLE IF NOT EXISTS ground_truth_publications (
     publication_id TEXT PRIMARY KEY,
     product_name TEXT NOT NULL CHECK(product_name IN ('gold_core','gold_extended','sampling_batch','review_snapshot','audit')),
@@ -358,6 +497,52 @@ BEGIN
       AND p.revision = NEW.revision - 1
   ) THEN RAISE(ABORT, 'invalid group supersedes chain') END;
 END;
+
+CREATE TRIGGER IF NOT EXISTS semantic_claim_v2_guard
+BEFORE INSERT ON ground_truth_semantic_claims_v2
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM ground_truth_claim_threads_v2 t
+    WHERE t.annotation_thread_id = NEW.annotation_thread_id
+      AND t.runner_id = NEW.runner_id
+      AND t.subject_kind = NEW.subject_kind
+      AND t.subject_key = NEW.subject_key
+  ) THEN RAISE(ABORT, 'claim thread target mismatch') END;
+  SELECT CASE WHEN NEW.revision = 1 AND NEW.supersedes_claim_id IS NOT NULL
+    THEN RAISE(ABORT, 'first claim revision cannot supersede') END;
+  SELECT CASE WHEN NEW.revision > 1 AND NOT EXISTS (
+    SELECT 1 FROM ground_truth_semantic_claims_v2 p
+    WHERE p.claim_id = NEW.supersedes_claim_id
+      AND p.annotation_thread_id = NEW.annotation_thread_id
+      AND p.dimension_name = NEW.dimension_name
+      AND p.revision = NEW.revision - 1
+  ) THEN RAISE(ABORT, 'invalid claim supersedes chain') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS workout_membership_v2_guard
+BEFORE INSERT ON ground_truth_workout_memberships_v2
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM ground_truth_workout_groups g
+    WHERE g.group_decision_id = NEW.group_decision_id
+      AND g.workout_group_id = NEW.workout_group_id
+      AND g.runner_id = NEW.runner_id
+  ) THEN RAISE(ABORT, 'workout group identity mismatch') END;
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM ground_truth_claim_threads_v2 t
+    WHERE t.annotation_thread_id = NEW.annotation_thread_id
+      AND t.runner_id = NEW.runner_id
+      AND t.subject_kind = 'workout_membership'
+  ) THEN RAISE(ABORT, 'membership thread target mismatch') END;
+  SELECT CASE WHEN NEW.revision = 1 AND NEW.supersedes_membership_decision_id IS NOT NULL
+    THEN RAISE(ABORT, 'first membership revision cannot supersede') END;
+  SELECT CASE WHEN NEW.revision > 1 AND NOT EXISTS (
+    SELECT 1 FROM ground_truth_workout_memberships_v2 p
+    WHERE p.membership_decision_id = NEW.supersedes_membership_decision_id
+      AND p.annotation_thread_id = NEW.annotation_thread_id
+      AND p.revision = NEW.revision - 1
+  ) THEN RAISE(ABORT, 'invalid membership supersedes chain') END;
+END;
 """
 
 
@@ -393,6 +578,23 @@ class GroundTruthStore:
         self.connection.executescript(SCHEMA_SQL)
         self.connection.executescript(_immutable_triggers())
         self.connection.executescript(INTEGRITY_TRIGGERS)
+        evidence_types = (
+            ("canonical_instrumental", "Canonical measurement from a device or instrument", "instrumental"),
+            ("manufacturer_interface", "Observation or interpretation exposed by a manufacturer interface", "manufacturer"),
+            ("human_contemporary_log", "Human record created contemporaneously with the event", "human"),
+            ("human_retrospective_report", "Human recollection reported after the event", "human"),
+            ("coach_annotation", "Annotation supplied by a coach or qualified reviewer", "human"),
+            ("external_document", "Documented evidence external to the wearable ecosystem", "external"),
+            ("analytical_signal_inference", "Inference derived from an analytical procedure", "analytical"),
+            ("synthetic_fixture", "Synthetic evidence used exclusively for tests", "analytical"),
+            ("legacy_decision_evidence", "Evidence reference inherited from an unmodified v1 decision", "external"),
+        )
+        self.connection.executemany(
+            """INSERT OR IGNORE INTO ground_truth_evidence_type_catalog_v2
+            (catalog_version,evidence_type_id,definition,source_class,lifecycle_status,superseded_by_type_id)
+            VALUES (?,?,?,?, 'active', NULL)""",
+            [(REFINEMENT_EVIDENCE_CATALOG_VERSION, *row) for row in evidence_types],
+        )
         self.connection.commit()
 
     def table_names(self) -> list[str]:
@@ -604,6 +806,178 @@ class GroundTruthStore:
                 tuple(values.get(column) for column in columns),
             )
 
+    def create_claim_thread_v2(
+        self, *, runner_id: str, subject_kind: str, subject_key: str,
+        opened_by: str, opened_at: str, annotation_thread_id: str | None = None,
+    ) -> str:
+        thread_id = annotation_thread_id or new_event_id()
+        try:
+            validate_uuid(thread_id, version=4)
+        except ValueError:
+            validate_uuid(thread_id, version=5)
+        opened_at = _utc_timestamp(opened_at)
+        with self.transaction() as db:
+            db.execute(
+                """INSERT INTO ground_truth_claim_threads_v2
+                (annotation_thread_id,runner_id,subject_kind,subject_key,opened_by,opened_at,contract_version)
+                VALUES (?,?,?,?,?,?,?)""",
+                (thread_id, runner_id, subject_kind, subject_key, opened_by, opened_at, REFINEMENT_VERSION),
+            )
+        return thread_id
+
+    def add_evidence_record_v2(self, row: Mapping[str, Any]) -> None:
+        values = dict(row)
+        try:
+            validate_uuid(str(values["evidence_id"]), version=4)
+        except ValueError:
+            validate_uuid(str(values["evidence_id"]), version=5)
+        values.setdefault("evidence_catalog_version", REFINEMENT_EVIDENCE_CATALOG_VERSION)
+        values.setdefault("contract_version", REFINEMENT_VERSION)
+        values["recorded_at"] = _utc_timestamp(values["recorded_at"])
+        if values.get("evidence_observed_at") is not None:
+            values["evidence_observed_at"] = _utc_timestamp(values["evidence_observed_at"])
+        columns = (
+            "evidence_id", "runner_id", "evidence_type_id", "evidence_catalog_version",
+            "source_system", "source_locator", "source_content_sha256",
+            "evidence_observed_at", "recorded_at", "scientific_purpose",
+            "data_minimization_note", "code_commit", "contract_version",
+        )
+        with self.transaction() as db:
+            db.execute(
+                f"INSERT INTO ground_truth_evidence_records_v2 ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",
+                tuple(values.get(column) for column in columns),
+            )
+
+    def add_semantic_claim_v2(self, row: Mapping[str, Any]) -> None:
+        values = dict(row)
+        validate_uuid(
+            str(values["claim_id"]),
+            version=5 if values.get("decision_kind") == "migration" else 4,
+        )
+        validate_claim(values)
+        for field in ("decision_timestamp", "effective_from", "label_available_at"):
+            values[field] = _utc_timestamp(values[field])
+        if values.get("evidence_observed_at") is not None:
+            values["evidence_observed_at"] = _utc_timestamp(values["evidence_observed_at"])
+        if values["label_available_at"] < values["decision_timestamp"]:
+            raise ValueError("label_available_at cannot precede decision_timestamp")
+        values.setdefault("provenance_granularity", "atomic")
+        values.setdefault("contract_version", REFINEMENT_VERSION)
+        columns = (
+            "claim_id", "annotation_thread_id", "revision", "supersedes_claim_id",
+            "decision_kind", "runner_id", "subject_kind", "subject_key", "source_file",
+            "source_sha256", "dimension_name", "claim_value", "claim_status", "claim_kind",
+            "evidence_level", "author_id", "author_role", "rationale", "uncertainty_reason",
+            "evidence_observed_at", "decision_timestamp", "effective_from", "label_available_at",
+            "provenance_granularity", "legacy_decision_id", "code_commit", "contract_version",
+        )
+        with self.transaction() as db:
+            db.execute(
+                f"INSERT INTO ground_truth_semantic_claims_v2 ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",
+                tuple(values.get(column) for column in columns),
+            )
+
+    def link_claim_evidence_v2(
+        self, *, claim_id: str, evidence_id: str, support_role: str,
+        rationale: str | None = None, link_id: str | None = None,
+    ) -> str:
+        link_id = link_id or deterministic_id("claim-evidence-v2", (claim_id, evidence_id, support_role))
+        with self.transaction() as db:
+            db.execute(
+                """INSERT INTO ground_truth_claim_evidence_links_v2
+                (claim_evidence_link_id,claim_id,evidence_id,support_role,rationale)
+                VALUES (?,?,?,?,?)""",
+                (link_id, claim_id, evidence_id, support_role, rationale),
+            )
+        return link_id
+
+    def add_workout_membership_v2(self, row: Mapping[str, Any]) -> None:
+        values = dict(row)
+        validate_uuid(str(values["membership_decision_id"]), version=4)
+        if values["membership_state"] not in MEMBERSHIP_STATES:
+            raise ValueError(f"unsupported membership_state: {values['membership_state']}")
+        if values["claim_kind"] not in CLAIM_KINDS:
+            raise ValueError(f"unsupported claim_kind: {values['claim_kind']}")
+        if values["evidence_level"] not in EVIDENCE_LEVELS:
+            raise ValueError(f"unsupported evidence_level: {values['evidence_level']}")
+        if values["membership_state"] in {"unknown", "abstained"}:
+            if values.get("component_order") is not None or values.get("component_role") is not None:
+                raise ValueError("unknown or abstained membership cannot assert order or role")
+            if not str(values.get("uncertainty_reason") or "").strip():
+                raise ValueError("unknown or abstained membership requires a reason")
+        for field in ("decision_timestamp", "effective_from", "label_available_at"):
+            values[field] = _utc_timestamp(values[field])
+        if values.get("evidence_observed_at") is not None:
+            values["evidence_observed_at"] = _utc_timestamp(values["evidence_observed_at"])
+        values.setdefault("contract_version", REFINEMENT_VERSION)
+        columns = (
+            "membership_decision_id", "annotation_thread_id", "revision",
+            "supersedes_membership_decision_id", "decision_kind", "runner_id",
+            "workout_group_id", "group_decision_id", "source_file", "source_sha256",
+            "membership_state", "component_order", "component_role", "claim_kind",
+            "evidence_level", "author_id", "author_role", "rationale", "uncertainty_reason",
+            "evidence_observed_at", "decision_timestamp", "effective_from", "label_available_at",
+            "code_commit", "contract_version",
+        )
+        with self.transaction() as db:
+            db.execute(
+                f"INSERT INTO ground_truth_workout_memberships_v2 ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",
+                tuple(values.get(column) for column in columns),
+            )
+
+    def link_membership_evidence_v2(
+        self, *, membership_decision_id: str, evidence_id: str, support_role: str,
+        rationale: str | None = None, link_id: str | None = None,
+    ) -> str:
+        link_id = link_id or deterministic_id(
+            "membership-evidence-v2", (membership_decision_id, evidence_id, support_role)
+        )
+        with self.transaction() as db:
+            db.execute(
+                """INSERT INTO ground_truth_membership_evidence_links_v2
+                (membership_evidence_link_id,membership_decision_id,evidence_id,support_role,rationale)
+                VALUES (?,?,?,?,?)""",
+                (link_id, membership_decision_id, evidence_id, support_role, rationale),
+            )
+        return link_id
+
+    def latest_semantic_claims_as_of_v2(self, knowledge_cutoff: str) -> list[dict[str, Any]]:
+        cutoff = _utc_timestamp(knowledge_cutoff)
+        rows = self.connection.execute(
+            """WITH eligible AS (
+                SELECT c.*, ROW_NUMBER() OVER (
+                    PARTITION BY c.annotation_thread_id ORDER BY c.revision DESC
+                ) AS rank_in_thread
+                FROM ground_truth_semantic_claims_v2 c
+                WHERE c.decision_timestamp <= ? AND c.label_available_at <= ?
+            )
+            SELECT * FROM eligible WHERE rank_in_thread = 1
+            ORDER BY runner_id,subject_kind,subject_key,dimension_name,annotation_thread_id""",
+            (cutoff, cutoff),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def latest_workout_memberships_as_of_v2(self, knowledge_cutoff: str) -> list[dict[str, Any]]:
+        cutoff = _utc_timestamp(knowledge_cutoff)
+        rows = self.connection.execute(
+            """WITH eligible AS (
+                SELECT m.*, ROW_NUMBER() OVER (
+                    PARTITION BY m.annotation_thread_id ORDER BY m.revision DESC
+                ) AS rank_in_thread
+                FROM ground_truth_workout_memberships_v2 m
+                WHERE m.decision_timestamp <= ? AND m.label_available_at <= ?
+            )
+            SELECT * FROM eligible WHERE rank_in_thread = 1
+            ORDER BY runner_id,workout_group_id,component_order,source_file""",
+            (cutoff, cutoff),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def build_dimension_gold_v2(self, *, product: str, knowledge_cutoff: str) -> list[dict[str, Any]]:
+        return compose_dimension_gold(
+            self.latest_semantic_claims_as_of_v2(knowledge_cutoff), product=product
+        )
+
     def latest_session_decisions_as_of(self, knowledge_cutoff: str) -> list[dict[str, Any]]:
         knowledge_cutoff = _utc_timestamp(knowledge_cutoff)
         rows = self.connection.execute(
@@ -676,6 +1050,11 @@ class GroundTruthStore:
             "SELECT type,name,sql FROM sqlite_master WHERE name LIKE 'ground_truth_%' ORDER BY type,name"
         ).fetchall()]
         return logical_hash(
-            {"schema_version": SCHEMA_VERSION, "id_strategy": ID_STRATEGY_VERSION, "objects": rows},
-            domain="d4-gt-schema-manifest-v1",
+            {
+                "legacy_schema_version": SCHEMA_VERSION,
+                "refinement_schema_version": REFINEMENT_SCHEMA_VERSION,
+                "id_strategy": ID_STRATEGY_VERSION,
+                "objects": rows,
+            },
+            domain="d4-gt-schema-manifest-v2",
         )
