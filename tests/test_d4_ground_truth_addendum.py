@@ -101,6 +101,10 @@ def test_schema_contains_all_contract_and_technical_tables(store):
         "ground_truth_evidence_type_catalog_v2", "ground_truth_evidence_records_v2",
         "ground_truth_semantic_claims_v2", "ground_truth_claim_evidence_links_v2",
         "ground_truth_workout_memberships_v2", "ground_truth_membership_evidence_links_v2",
+        "ground_truth_activity_type_catalog_v3", "ground_truth_workout_components_v3",
+        "ground_truth_component_evidence_links_v3",
+        "ground_truth_component_claim_threads_v3", "ground_truth_component_claims_v3",
+        "ground_truth_component_claim_evidence_links_v3",
     }
 
 

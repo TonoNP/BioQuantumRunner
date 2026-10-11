@@ -16,12 +16,16 @@ from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 from .canonical import logical_hash, logical_records_hash
 from .contracts import (
+    ACTIVITY_CATALOG_VERSION,
+    ACTIVITY_TYPES_V1,
     ADDENDUM_VERSION,
     CLAIM_KINDS,
+    COMPONENT_SCHEMA_VERSION,
+    COMPONENT_VERSION,
     EVIDENCE_CATALOG_VERSION,
     EVIDENCE_LEVELS,
     MEMBERSHIP_STATES,
-    PROHIBITED_LOCKED_TEST_PURPOSES,
+    PURPOSE_LOCKED_TEST_ACCESS,
     REFINEMENT_EVIDENCE_CATALOG_VERSION,
     REFINEMENT_SCHEMA_VERSION,
     REFINEMENT_VERSION,
@@ -29,6 +33,7 @@ from .contracts import (
     TEMPORAL_SPLIT_VERSION,
     temporal_partition,
 )
+from .components import compose_component_gold, validate_component, validate_component_claim
 from .ids import ID_STRATEGY_VERSION, deterministic_id, new_event_id, validate_uuid
 from .refinement import compose_dimension_gold, validate_claim
 
@@ -59,6 +64,12 @@ IMMUTABLE_TABLES = (
     "ground_truth_claim_evidence_links_v2",
     "ground_truth_workout_memberships_v2",
     "ground_truth_membership_evidence_links_v2",
+    "ground_truth_activity_type_catalog_v3",
+    "ground_truth_workout_components_v3",
+    "ground_truth_component_evidence_links_v3",
+    "ground_truth_component_claim_threads_v3",
+    "ground_truth_component_claims_v3",
+    "ground_truth_component_claim_evidence_links_v3",
     "ground_truth_publications",
 )
 
@@ -365,6 +376,167 @@ CREATE TABLE IF NOT EXISTS ground_truth_membership_evidence_links_v2 (
     UNIQUE(membership_decision_id, evidence_id, support_role)
 );
 
+CREATE TABLE IF NOT EXISTS ground_truth_activity_type_catalog_v3 (
+    catalog_version TEXT NOT NULL,
+    activity_type_id TEXT NOT NULL CHECK(activity_type_id <> 'unknown'),
+    definition TEXT NOT NULL,
+    lifecycle_status TEXT NOT NULL CHECK(lifecycle_status IN ('active','deprecated')),
+    superseded_by_type_id TEXT,
+    created_at TEXT NOT NULL,
+    code_commit TEXT NOT NULL,
+    contract_version TEXT NOT NULL,
+    PRIMARY KEY (catalog_version, activity_type_id),
+    CHECK((lifecycle_status = 'deprecated') OR superseded_by_type_id IS NULL)
+);
+
+CREATE TABLE IF NOT EXISTS ground_truth_workout_components_v3 (
+    component_decision_id TEXT PRIMARY KEY,
+    component_id TEXT NOT NULL,
+    supersedes_component_decision_id TEXT REFERENCES ground_truth_workout_components_v3(component_decision_id),
+    decision_kind TEXT NOT NULL CHECK(decision_kind IN ('annotation','correction','adjudication','consensus','migration')),
+    runner_id TEXT NOT NULL,
+    workout_group_id TEXT NOT NULL,
+    group_decision_id TEXT NOT NULL REFERENCES ground_truth_workout_groups(group_decision_id),
+    component_order INTEGER NOT NULL CHECK(component_order >= 1),
+    recording_state TEXT NOT NULL CHECK(recording_state IN ('recorded','unrecorded','unknown')),
+    membership_decision_id TEXT REFERENCES ground_truth_workout_memberships_v2(membership_decision_id),
+    activity_catalog_version TEXT,
+    activity_type_id TEXT,
+    component_role TEXT,
+    start_time TEXT,
+    end_time TEXT,
+    temporal_precision TEXT NOT NULL CHECK(temporal_precision IN ('exact','approximate','bounded','unknown')),
+    duration_s REAL CHECK(duration_s IS NULL OR (duration_s >= 0 AND duration_s <= 1.7976931348623157e308)),
+    duration_basis TEXT NOT NULL CHECK(duration_basis IN ('active','elapsed','estimated','unknown')),
+    claim_kind TEXT NOT NULL CHECK(claim_kind IN ('instrumental_observation','human_report','manufacturer_interpretation','analytical_inference','legacy_unclassified')),
+    evidence_level TEXT NOT NULL CHECK(evidence_level IN ('verified','reported','suspected')),
+    author_id TEXT NOT NULL,
+    author_role TEXT NOT NULL,
+    evidence_observed_at TEXT,
+    decision_timestamp TEXT NOT NULL,
+    effective_from TEXT NOT NULL,
+    label_available_at TEXT NOT NULL,
+    uncertainty_reason TEXT,
+    rationale TEXT,
+    code_commit TEXT NOT NULL,
+    contract_version TEXT NOT NULL,
+    FOREIGN KEY (activity_catalog_version, activity_type_id)
+      REFERENCES ground_truth_activity_type_catalog_v3(catalog_version, activity_type_id),
+    CHECK(label_available_at >= decision_timestamp),
+    CHECK((duration_basis <> 'unknown') OR duration_s IS NULL),
+    CHECK(
+      (recording_state = 'recorded' AND membership_decision_id IS NOT NULL
+       AND activity_catalog_version IS NULL AND activity_type_id IS NULL)
+      OR
+      (recording_state = 'unrecorded' AND membership_decision_id IS NULL
+       AND activity_catalog_version IS NOT NULL AND activity_type_id IS NOT NULL)
+      OR
+      (recording_state = 'unknown' AND membership_decision_id IS NULL
+       AND activity_catalog_version IS NULL AND activity_type_id IS NULL
+       AND component_role IS NULL AND length(trim(uncertainty_reason)) > 0)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_gt_components_runner_group_order
+ON ground_truth_workout_components_v3(runner_id, workout_group_id, component_order);
+CREATE INDEX IF NOT EXISTS idx_gt_components_identity_asof
+ON ground_truth_workout_components_v3(component_id, label_available_at);
+CREATE INDEX IF NOT EXISTS idx_gt_components_membership
+ON ground_truth_workout_components_v3(membership_decision_id);
+
+CREATE TABLE IF NOT EXISTS ground_truth_component_evidence_links_v3 (
+    component_evidence_link_id TEXT PRIMARY KEY,
+    component_decision_id TEXT NOT NULL REFERENCES ground_truth_workout_components_v3(component_decision_id),
+    evidence_id TEXT NOT NULL REFERENCES ground_truth_evidence_records_v2(evidence_id),
+    support_role TEXT NOT NULL CHECK(support_role IN ('support','contradict','contextual','provenance_only')),
+    rationale TEXT,
+    UNIQUE(component_decision_id, evidence_id, support_role)
+);
+
+CREATE TABLE IF NOT EXISTS ground_truth_component_claim_threads_v3 (
+    annotation_thread_id TEXT PRIMARY KEY,
+    runner_id TEXT NOT NULL,
+    component_id TEXT NOT NULL,
+    dimension_name TEXT NOT NULL CHECK(dimension_name IN (
+      'repetition_count_intended','repetition_distance_nominal',
+      'repetition_count_executed','repetition_distance_executed',
+      'repetition_count_observed','repetition_distance_measured'
+    )),
+    item_index INTEGER CHECK(item_index IS NULL OR item_index >= 1),
+    opened_by TEXT NOT NULL,
+    opened_at TEXT NOT NULL,
+    contract_version TEXT NOT NULL,
+    UNIQUE(runner_id, component_id, dimension_name, item_index, annotation_thread_id)
+);
+
+CREATE TABLE IF NOT EXISTS ground_truth_component_claims_v3 (
+    claim_id TEXT PRIMARY KEY,
+    annotation_thread_id TEXT NOT NULL REFERENCES ground_truth_component_claim_threads_v3(annotation_thread_id),
+    revision INTEGER NOT NULL CHECK(revision >= 1),
+    supersedes_claim_id TEXT REFERENCES ground_truth_component_claims_v3(claim_id),
+    primary_evidence_id TEXT REFERENCES ground_truth_evidence_records_v2(evidence_id),
+    decision_kind TEXT NOT NULL CHECK(decision_kind IN ('annotation','correction','adjudication','consensus','migration')),
+    runner_id TEXT NOT NULL,
+    component_id TEXT NOT NULL,
+    dimension_name TEXT NOT NULL,
+    item_index INTEGER CHECK(item_index IS NULL OR item_index >= 1),
+    claim_status TEXT NOT NULL CHECK(claim_status IN ('asserted','unknown','uncertain','abstained','not_applicable')),
+    value_kind TEXT NOT NULL CHECK(value_kind IN ('none','integer','numeric','text','range')),
+    integer_value BLOB,
+    numeric_value REAL,
+    text_value TEXT,
+    range_lower_value REAL,
+    range_upper_value REAL,
+    unit TEXT,
+    value_qualifier TEXT CHECK(value_qualifier IS NULL OR value_qualifier IN ('exact','approximate','minimum','maximum','range')),
+    claim_kind TEXT NOT NULL CHECK(claim_kind IN ('instrumental_observation','human_report','manufacturer_interpretation','analytical_inference','legacy_unclassified')),
+    evidence_level TEXT NOT NULL CHECK(evidence_level IN ('verified','reported','suspected')),
+    author_id TEXT NOT NULL,
+    author_role TEXT NOT NULL,
+    rationale TEXT,
+    uncertainty_reason TEXT,
+    evidence_observed_at TEXT,
+    decision_timestamp TEXT NOT NULL,
+    effective_from TEXT NOT NULL,
+    label_available_at TEXT NOT NULL,
+    code_commit TEXT NOT NULL,
+    contract_version TEXT NOT NULL,
+    UNIQUE(annotation_thread_id, revision),
+    CHECK(label_available_at >= decision_timestamp),
+    CHECK(
+      (value_kind = 'none' AND integer_value IS NULL AND numeric_value IS NULL AND text_value IS NULL
+       AND range_lower_value IS NULL AND range_upper_value IS NULL AND unit IS NULL AND value_qualifier IS NULL)
+      OR
+      (value_kind = 'integer' AND integer_value IS NOT NULL AND typeof(integer_value) = 'integer' AND integer_value >= 0
+       AND numeric_value IS NULL AND text_value IS NULL AND range_lower_value IS NULL AND range_upper_value IS NULL AND unit IS NULL)
+      OR
+      (value_kind = 'numeric' AND integer_value IS NULL AND numeric_value IS NOT NULL AND numeric_value >= 0 AND numeric_value <= 1.7976931348623157e308
+       AND text_value IS NULL AND range_lower_value IS NULL AND range_upper_value IS NULL)
+      OR
+      (value_kind = 'text' AND integer_value IS NULL AND numeric_value IS NULL AND length(trim(text_value)) > 0
+       AND range_lower_value IS NULL AND range_upper_value IS NULL AND unit IS NULL AND value_qualifier IS NULL)
+      OR
+      (value_kind = 'range' AND integer_value IS NULL AND numeric_value IS NULL AND text_value IS NULL
+       AND range_lower_value IS NOT NULL AND range_lower_value >= 0 AND range_lower_value <= 1.7976931348623157e308
+       AND range_upper_value IS NOT NULL AND range_upper_value <= 1.7976931348623157e308 AND range_lower_value <= range_upper_value
+       AND value_qualifier = 'range')
+    ),
+    CHECK((claim_status = 'asserted' AND value_kind <> 'none') OR claim_status <> 'asserted'),
+    CHECK((claim_status IN ('asserted','uncertain') AND primary_evidence_id IS NOT NULL)
+       OR claim_status NOT IN ('asserted','uncertain')),
+    CHECK((claim_status NOT IN ('unknown','abstained','not_applicable') AND value_kind <> 'none')
+       OR (claim_status IN ('unknown','abstained','not_applicable') AND value_kind = 'none'))
+);
+
+CREATE TABLE IF NOT EXISTS ground_truth_component_claim_evidence_links_v3 (
+    claim_evidence_link_id TEXT PRIMARY KEY,
+    claim_id TEXT NOT NULL REFERENCES ground_truth_component_claims_v3(claim_id),
+    evidence_id TEXT NOT NULL REFERENCES ground_truth_evidence_records_v2(evidence_id),
+    support_role TEXT NOT NULL CHECK(support_role IN ('support','contradict','contextual','provenance_only')),
+    rationale TEXT,
+    UNIQUE(claim_id, evidence_id, support_role)
+);
+
 CREATE TABLE IF NOT EXISTS ground_truth_publications (
     publication_id TEXT PRIMARY KEY,
     product_name TEXT NOT NULL CHECK(product_name IN ('gold_core','gold_extended','sampling_batch','review_snapshot','audit')),
@@ -543,6 +715,117 @@ BEGIN
       AND p.revision = NEW.revision - 1
   ) THEN RAISE(ABORT, 'invalid membership supersedes chain') END;
 END;
+
+CREATE TRIGGER IF NOT EXISTS workout_component_v3_guard
+BEFORE INSERT ON ground_truth_workout_components_v3
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM ground_truth_workout_groups g
+    WHERE g.group_decision_id = NEW.group_decision_id
+      AND g.workout_group_id = NEW.workout_group_id
+      AND g.runner_id = NEW.runner_id
+  ) THEN RAISE(ABORT, 'workout component group identity mismatch') END;
+  SELECT CASE WHEN NEW.recording_state = 'recorded' AND NOT EXISTS (
+    SELECT 1 FROM ground_truth_workout_memberships_v2 m
+    WHERE m.membership_decision_id = NEW.membership_decision_id
+      AND m.runner_id = NEW.runner_id
+      AND m.workout_group_id = NEW.workout_group_id
+      AND m.group_decision_id = NEW.group_decision_id
+      AND m.membership_state = 'included'
+  ) THEN RAISE(ABORT, 'recorded component membership identity mismatch') END;
+  SELECT CASE WHEN NEW.supersedes_component_decision_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM ground_truth_workout_components_v3 p
+    WHERE p.component_decision_id = NEW.supersedes_component_decision_id
+      AND p.component_id = NEW.component_id
+      AND p.runner_id = NEW.runner_id
+      AND p.workout_group_id = NEW.workout_group_id
+      AND p.group_decision_id = NEW.group_decision_id
+      AND p.component_order = NEW.component_order
+  ) THEN RAISE(ABORT, 'invalid component supersedes chain') END;
+  SELECT CASE WHEN NEW.supersedes_component_decision_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM ground_truth_workout_components_v3 p
+    WHERE p.component_decision_id = NEW.supersedes_component_decision_id
+      AND (NEW.decision_timestamp < p.decision_timestamp
+           OR NEW.label_available_at < p.label_available_at)
+  ) THEN RAISE(ABORT, 'component revision temporal regression') END;
+  SELECT CASE WHEN NEW.supersedes_component_decision_id IS NULL AND EXISTS (
+    SELECT 1 FROM ground_truth_workout_components_v3 p WHERE p.component_id = NEW.component_id
+  ) THEN RAISE(ABORT, 'component identity already exists') END;
+  SELECT CASE WHEN NEW.supersedes_component_decision_id IS NULL AND EXISTS (
+    SELECT 1 FROM ground_truth_workout_components_v3 p
+    WHERE p.group_decision_id = NEW.group_decision_id AND p.component_order = NEW.component_order
+      AND p.supersedes_component_decision_id IS NULL
+  ) THEN RAISE(ABORT, 'component order already assigned') END;
+  SELECT CASE WHEN NEW.supersedes_component_decision_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM ground_truth_workout_components_v3 c
+    WHERE c.supersedes_component_decision_id = NEW.supersedes_component_decision_id
+  ) THEN RAISE(ABORT, 'component revision already superseded') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS component_evidence_v3_guard
+BEFORE INSERT ON ground_truth_component_evidence_links_v3
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM ground_truth_workout_components_v3 c
+    JOIN ground_truth_evidence_records_v2 e ON e.evidence_id = NEW.evidence_id
+    WHERE c.component_decision_id = NEW.component_decision_id
+      AND c.runner_id = e.runner_id
+      AND e.recorded_at <= c.label_available_at
+  ) THEN RAISE(ABORT, 'component evidence mismatch or unavailable') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS component_claim_thread_v3_guard
+BEFORE INSERT ON ground_truth_component_claim_threads_v3
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM ground_truth_workout_components_v3 c
+    WHERE c.component_id = NEW.component_id AND c.runner_id = NEW.runner_id
+  ) THEN RAISE(ABORT, 'component claim thread target mismatch') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS component_claim_v3_guard
+BEFORE INSERT ON ground_truth_component_claims_v3
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM ground_truth_component_claim_threads_v3 t
+    WHERE t.annotation_thread_id = NEW.annotation_thread_id
+      AND t.runner_id = NEW.runner_id
+      AND t.component_id = NEW.component_id
+      AND t.dimension_name = NEW.dimension_name
+      AND t.item_index IS NEW.item_index
+  ) THEN RAISE(ABORT, 'component claim thread target mismatch') END;
+  SELECT CASE WHEN NEW.revision = 1 AND NEW.supersedes_claim_id IS NOT NULL
+    THEN RAISE(ABORT, 'first component claim revision cannot supersede') END;
+  SELECT CASE WHEN NEW.revision > 1 AND NOT EXISTS (
+    SELECT 1 FROM ground_truth_component_claims_v3 p
+    WHERE p.claim_id = NEW.supersedes_claim_id
+      AND p.annotation_thread_id = NEW.annotation_thread_id
+      AND p.revision = NEW.revision - 1
+  ) THEN RAISE(ABORT, 'invalid component claim supersedes chain') END;
+  SELECT CASE WHEN NEW.revision > 1 AND EXISTS (
+    SELECT 1 FROM ground_truth_component_claims_v3 p
+    WHERE p.claim_id = NEW.supersedes_claim_id
+      AND (NEW.decision_timestamp < p.decision_timestamp
+           OR NEW.label_available_at < p.label_available_at)
+  ) THEN RAISE(ABORT, 'component claim temporal regression') END;
+  SELECT CASE WHEN NEW.primary_evidence_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM ground_truth_evidence_records_v2 e
+    WHERE e.evidence_id = NEW.primary_evidence_id
+      AND e.runner_id = NEW.runner_id
+      AND e.recorded_at <= NEW.label_available_at
+  ) THEN RAISE(ABORT, 'component claim primary evidence mismatch or unavailable') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS component_claim_evidence_v3_guard
+BEFORE INSERT ON ground_truth_component_claim_evidence_links_v3
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM ground_truth_component_claims_v3 c
+    JOIN ground_truth_evidence_records_v2 e ON e.evidence_id = NEW.evidence_id
+    WHERE c.claim_id = NEW.claim_id AND c.runner_id = e.runner_id
+      AND e.recorded_at <= c.label_available_at
+  ) THEN RAISE(ABORT, 'component claim evidence runner mismatch') END;
+END;
 """
 
 
@@ -594,6 +877,20 @@ class GroundTruthStore:
             (catalog_version,evidence_type_id,definition,source_class,lifecycle_status,superseded_by_type_id)
             VALUES (?,?,?,?, 'active', NULL)""",
             [(REFINEMENT_EVIDENCE_CATALOG_VERSION, *row) for row in evidence_types],
+        )
+        self.connection.executemany(
+            """INSERT OR IGNORE INTO ground_truth_activity_type_catalog_v3
+            (catalog_version,activity_type_id,definition,lifecycle_status,
+             superseded_by_type_id,created_at,code_commit,contract_version)
+            VALUES (?,?,?,'active',NULL,?,?,?)""",
+            [
+                (
+                    ACTIVITY_CATALOG_VERSION, activity_type, definition,
+                    "2026-10-06T00:00:00.000000Z",
+                    "389c748c82156be38cb856d52a5da8d361a6e342", COMPONENT_VERSION,
+                )
+                for activity_type, definition in sorted(ACTIVITY_TYPES_V1.items())
+            ],
         )
         self.connection.commit()
 
@@ -941,6 +1238,222 @@ class GroundTruthStore:
             )
         return link_id
 
+    def add_workout_component_v3(
+        self, row: Mapping[str, Any], *, evidence_links: Sequence[Mapping[str, Any]]
+    ) -> None:
+        """Atomically add a component and at least one provenance link."""
+        if not evidence_links:
+            raise ValueError("workout component requires evidence")
+        values = dict(row)
+        validate_component(values)
+        decision_version = 5 if values.get("decision_kind") == "migration" else 4
+        validate_uuid(str(values["component_decision_id"]), version=decision_version)
+        try:
+            validate_uuid(str(values["component_id"]), version=4)
+        except ValueError:
+            validate_uuid(str(values["component_id"]), version=5)
+        values.setdefault("contract_version", COMPONENT_VERSION)
+        if values.get("activity_type_id") is not None:
+            values.setdefault("activity_catalog_version", ACTIVITY_CATALOG_VERSION)
+        for field in ("start_time", "end_time", "decision_timestamp", "effective_from", "label_available_at"):
+            if values.get(field) is not None:
+                values[field] = _utc_timestamp(values[field])
+        if values.get("evidence_observed_at") is not None:
+            values["evidence_observed_at"] = _utc_timestamp(values["evidence_observed_at"])
+        if values["label_available_at"] < values["decision_timestamp"]:
+            raise ValueError("label_available_at cannot precede decision_timestamp")
+        columns = (
+            "component_decision_id", "component_id", "supersedes_component_decision_id",
+            "decision_kind",
+            "runner_id", "workout_group_id", "group_decision_id", "component_order",
+            "recording_state", "membership_decision_id", "activity_catalog_version",
+            "activity_type_id", "component_role", "start_time", "end_time",
+            "temporal_precision", "duration_s", "duration_basis", "claim_kind",
+            "evidence_level", "author_id", "author_role", "evidence_observed_at",
+            "decision_timestamp", "effective_from", "label_available_at",
+            "uncertainty_reason", "rationale", "code_commit", "contract_version",
+        )
+        with self.transaction() as db:
+            self._insert_workout_component_v3(db, values, evidence_links, columns=columns)
+
+    def _insert_workout_component_v3(
+        self, db: sqlite3.Connection, values: Mapping[str, Any],
+        evidence_links: Sequence[Mapping[str, Any]], *, columns: Sequence[str] | None = None,
+    ) -> None:
+        columns = columns or (
+            "component_decision_id", "component_id", "supersedes_component_decision_id", "decision_kind",
+            "runner_id", "workout_group_id", "group_decision_id", "component_order",
+            "recording_state", "membership_decision_id", "activity_catalog_version",
+            "activity_type_id", "component_role", "start_time", "end_time",
+            "temporal_precision", "duration_s", "duration_basis", "claim_kind",
+            "evidence_level", "author_id", "author_role", "evidence_observed_at",
+            "decision_timestamp", "effective_from", "label_available_at",
+            "uncertainty_reason", "rationale", "code_commit", "contract_version",
+        )
+        db.execute(
+                f"INSERT INTO ground_truth_workout_components_v3 ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",
+                tuple(values.get(column) for column in columns),
+            )
+        for raw_link in evidence_links:
+            link = dict(raw_link)
+            support_role = str(link.get("support_role", "support"))
+            link_id = link.get("component_evidence_link_id") or deterministic_id(
+                "component-evidence-v3", (values["component_decision_id"], link["evidence_id"], support_role),
+            )
+            db.execute(
+                    """INSERT INTO ground_truth_component_evidence_links_v3
+                    (component_evidence_link_id,component_decision_id,evidence_id,support_role,rationale)
+                    VALUES (?,?,?,?,?)""",
+                    (link_id, values["component_decision_id"], link["evidence_id"], support_role, link.get("rationale")),
+                )
+
+    def create_component_claim_thread_v3(
+        self, *, runner_id: str, component_id: str, dimension_name: str,
+        opened_by: str, opened_at: str, item_index: int | None = None,
+        annotation_thread_id: str | None = None,
+    ) -> str:
+        thread_id = annotation_thread_id or new_event_id()
+        try:
+            validate_uuid(thread_id, version=4)
+        except ValueError:
+            validate_uuid(thread_id, version=5)
+        with self.transaction() as db:
+            db.execute(
+                """INSERT INTO ground_truth_component_claim_threads_v3
+                (annotation_thread_id,runner_id,component_id,dimension_name,item_index,
+                 opened_by,opened_at,contract_version)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    thread_id, runner_id, component_id, dimension_name, item_index,
+                    opened_by, _utc_timestamp(opened_at), COMPONENT_VERSION,
+                ),
+            )
+        return thread_id
+
+    def add_component_claim_v3(
+        self, row: Mapping[str, Any], *, evidence_links: Sequence[Mapping[str, Any]] = ()
+    ) -> None:
+        values = dict(row)
+        validate_uuid(
+            str(values["claim_id"]),
+            version=5 if values.get("decision_kind") == "migration" else 4,
+        )
+        validate_component_claim(values)
+        if values["claim_status"] in {"asserted", "uncertain"} and not evidence_links:
+            raise ValueError("asserted or uncertain component claim requires evidence")
+        if evidence_links:
+            values.setdefault("primary_evidence_id", evidence_links[0]["evidence_id"])
+        for field in ("decision_timestamp", "effective_from", "label_available_at"):
+            values[field] = _utc_timestamp(values[field])
+        if values.get("evidence_observed_at") is not None:
+            values["evidence_observed_at"] = _utc_timestamp(values["evidence_observed_at"])
+        if values["label_available_at"] < values["decision_timestamp"]:
+            raise ValueError("label_available_at cannot precede decision_timestamp")
+        values.setdefault("contract_version", COMPONENT_VERSION)
+        columns = (
+            "claim_id", "annotation_thread_id", "revision", "supersedes_claim_id", "primary_evidence_id",
+            "decision_kind", "runner_id", "component_id", "dimension_name", "item_index",
+            "claim_status", "value_kind", "integer_value", "numeric_value", "text_value",
+            "range_lower_value", "range_upper_value", "unit", "value_qualifier",
+            "claim_kind", "evidence_level", "author_id", "author_role", "rationale",
+            "uncertainty_reason", "evidence_observed_at", "decision_timestamp",
+            "effective_from", "label_available_at", "code_commit", "contract_version",
+        )
+        with self.transaction() as db:
+            db.execute(
+                f"INSERT INTO ground_truth_component_claims_v3 ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",
+                tuple(values.get(column) for column in columns),
+            )
+            for raw_link in evidence_links:
+                link = dict(raw_link)
+                role = str(link.get("support_role", "support"))
+                link_id = link.get("claim_evidence_link_id") or deterministic_id(
+                    "component-claim-evidence-v3", (values["claim_id"], link["evidence_id"], role),
+                )
+                db.execute(
+                    """INSERT INTO ground_truth_component_claim_evidence_links_v3
+                    (claim_evidence_link_id,claim_id,evidence_id,support_role,rationale)
+                    VALUES (?,?,?,?,?)""",
+                    (link_id, values["claim_id"], link["evidence_id"], role, link.get("rationale")),
+                )
+
+    def _component_source_files(self, component_rows: Sequence[Mapping[str, Any]]) -> list[str]:
+        sources: set[str] = set()
+        for row in component_rows:
+            if row.get("membership_decision_id"):
+                found = self.connection.execute(
+                    "SELECT source_file FROM ground_truth_workout_memberships_v2 WHERE membership_decision_id=?",
+                    (row["membership_decision_id"],),
+                ).fetchone()
+                if found: sources.add(str(found[0]))
+            else:
+                sources.update(str(item[0]) for item in self.connection.execute(
+                    """SELECT source_file FROM ground_truth_workout_memberships_v2
+                       WHERE group_decision_id=? AND membership_state='included'""",
+                    (row["group_decision_id"],),
+                ).fetchall())
+        return sorted(sources)
+
+    def latest_workout_components_as_of_v3(
+        self, knowledge_cutoff: str, *, purpose: str
+    ) -> list[dict[str, Any]]:
+        cutoff = _utc_timestamp(knowledge_cutoff)
+        rows = self.connection.execute(
+            """WITH visible_groups AS (
+                 SELECT g.*, ROW_NUMBER() OVER (
+                   PARTITION BY g.workout_group_id ORDER BY g.revision DESC
+                 ) AS group_rank
+                 FROM ground_truth_workout_groups g
+                 WHERE g.decision_timestamp <= ? AND g.label_available_at <= ?
+               )
+               , visible_components AS (
+                 SELECT c.*
+                 FROM ground_truth_workout_components_v3 c
+                 WHERE c.decision_timestamp <= ? AND c.label_available_at <= ?
+               )
+               SELECT c.* FROM visible_components c
+               JOIN visible_groups g ON g.group_decision_id=c.group_decision_id AND g.group_rank=1
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM visible_components successor
+                 WHERE successor.supersedes_component_decision_id=c.component_decision_id
+               )
+               ORDER BY c.runner_id,c.workout_group_id,c.component_order""",
+            (cutoff, cutoff, cutoff, cutoff),
+        ).fetchall()
+        output = [dict(row) for row in rows]
+        self.assert_purpose_allowed(purpose=purpose, source_files=self._component_source_files(output))
+        return output
+
+    def latest_component_claims_as_of_v3(self, knowledge_cutoff: str, *, purpose: str) -> list[dict[str, Any]]:
+        self.assert_purpose_allowed(purpose=purpose, source_files=())
+        cutoff = _utc_timestamp(knowledge_cutoff)
+        rows = self.connection.execute(
+            """WITH eligible AS (
+                 SELECT c.*, ROW_NUMBER() OVER (
+                   PARTITION BY c.annotation_thread_id ORDER BY c.revision DESC
+                 ) AS rank_in_thread
+                 FROM ground_truth_component_claims_v3 c
+                 WHERE c.decision_timestamp <= ? AND c.label_available_at <= ?
+               )
+               SELECT * FROM eligible WHERE rank_in_thread=1
+               ORDER BY runner_id,component_id,dimension_name,item_index,annotation_thread_id""",
+            (cutoff, cutoff),
+        ).fetchall()
+        output = [dict(row) for row in rows]
+        component_ids = sorted({row["component_id"] for row in output})
+        if component_ids:
+            marks = ",".join("?" for _ in component_ids)
+            components = [dict(row) for row in self.connection.execute(
+                f"SELECT * FROM ground_truth_workout_components_v3 WHERE component_id IN ({marks})", component_ids
+            ).fetchall()]
+            self.assert_purpose_allowed(purpose=purpose, source_files=self._component_source_files(components))
+        return output
+
+    def build_component_gold_v3(self, *, product: str, knowledge_cutoff: str, purpose: str) -> list[dict[str, Any]]:
+        return compose_component_gold(
+            self.latest_component_claims_as_of_v3(knowledge_cutoff, purpose=purpose), product=product
+        )
+
     def latest_semantic_claims_as_of_v2(self, knowledge_cutoff: str) -> list[dict[str, Any]]:
         cutoff = _utc_timestamp(knowledge_cutoff)
         rows = self.connection.execute(
@@ -1025,7 +1538,9 @@ class GroundTruthStore:
         return output
 
     def assert_purpose_allowed(self, *, purpose: str, source_files: Sequence[str]) -> None:
-        if purpose not in PROHIBITED_LOCKED_TEST_PURPOSES:
+        if purpose not in PURPOSE_LOCKED_TEST_ACCESS:
+            raise ValueError(f"unknown access purpose: {purpose}")
+        if PURPOSE_LOCKED_TEST_ACCESS[purpose]:
             return
         if not source_files:
             return
@@ -1053,6 +1568,7 @@ class GroundTruthStore:
             {
                 "legacy_schema_version": SCHEMA_VERSION,
                 "refinement_schema_version": REFINEMENT_SCHEMA_VERSION,
+                "component_schema_version": COMPONENT_SCHEMA_VERSION,
                 "id_strategy": ID_STRATEGY_VERSION,
                 "objects": rows,
             },

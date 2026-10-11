@@ -297,3 +297,20 @@ def test_legacy_migration_is_additive_deterministic_and_does_not_invent_atomic_p
         ("legacy_unclassified", "legacy_decision_wide")
     }
     assert store.connection.execute("SELECT COUNT(*) FROM ground_truth_session_decisions").fetchone()[0] == 1
+
+
+def test_empty_component_v3_tables_do_not_change_v2_gold(store):
+    thread(store); store.add_semantic_claim_v2(claim())
+    before = store.build_dimension_gold_v2(
+        product="gold_core", knowledge_cutoff="2025-01-01T00:00:00Z"
+    )
+    assert store.connection.execute(
+        "SELECT COUNT(*) FROM ground_truth_workout_components_v3"
+    ).fetchone()[0] == 0
+    assert store.connection.execute(
+        "SELECT COUNT(*) FROM ground_truth_component_claims_v3"
+    ).fetchone()[0] == 0
+    after = store.build_dimension_gold_v2(
+        product="gold_core", knowledge_cutoff="2025-01-01T00:00:00Z"
+    )
+    assert before == after
